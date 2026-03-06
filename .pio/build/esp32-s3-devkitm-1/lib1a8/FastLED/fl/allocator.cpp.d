@@ -1,0 +1,31 @@
+.pio/build/esp32-s3-devkitm-1/lib1a8/FastLED/fl/allocator.cpp.o: \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/allocator.cpp \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/allocator.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/inplacenew.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/stdint.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/int.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/platforms/int.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/platforms/arm/is_arm.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/platforms/esp/int.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/memfill.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/type_traits.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/namespace.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/move.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/unused.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/bit_cast.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/bitset.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/bitset_dynamic.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/math_macros.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/has_include.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/compiler_control.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/variant.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/thread_local.h \
+ .pio/libdeps/esp32-s3-devkitm-1/FastLED/src/fl/thread.h \
+ C:/Users/33893/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/heap/include/esp_heap_caps.h \
+ C:/Users/33893/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/heap/include/multi_heap.h \
+ C:/Users/33893/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_err.h \
+ C:/Users/33893/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_compiler.h \
+ C:/Users/33893/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_attr.h \
+ C:/Users/33893/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_system/include/esp_system.h \
+ C:/Users/33893/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_bit_defs.h \
+ C:/Users/33893/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_idf_version.h

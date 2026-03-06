@@ -1,0 +1,5 @@
+askuric/Simple FOC @ =2.3.5
+simplefoc/SimpleFOCDrivers @ 1.0.9
+fastled/FastLED @ ^3.10.3
+madhephaestus/ESP32Servo @ 3.0.9
+h2zero/NimBLE-Arduino @ 2.3.6
