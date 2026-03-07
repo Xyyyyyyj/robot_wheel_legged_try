@@ -11,7 +11,14 @@ WheelLeg::WheelLeg(int pin1, int pin2, int pin3, int pin4)
       anglePID(BALANCE_ANGLE_PID_P, BALANCE_ANGLE_PID_I, BALANCE_ANGLE_PID_D, 0, BALANCE_OUTPUT_LIMIT),
       steeringPID(STEERING_PID_P, STEERING_PID_I, STEERING_PID_D, 0, 10.0f),
       offsetPID(OFFSET_PID_P, OFFSET_PID_I, OFFSET_PID_D, 0, 2.0f),
-      rollPID(ROLL_PID_P, ROLL_PID_I, ROLL_PID_D, 0, 5.0f) {
+      rollPID(ROLL_PID_P, ROLL_PID_I, ROLL_PID_D, 0, 5.0f),
+      // LQR 风格多 PID 控制器初始化（参数来源于 3.Software，输出限制与角度环一致）
+      lqrAnglePID(LQR_ANGLE_PID_P, LQR_ANGLE_PID_I, LQR_ANGLE_PID_D, 0, BALANCE_OUTPUT_LIMIT),
+      lqrGyroPID(LQR_GYRO_PID_P, LQR_GYRO_PID_I, LQR_GYRO_PID_D, 0, BALANCE_OUTPUT_LIMIT),
+      lqrDistancePID(LQR_DISTANCE_PID_P, LQR_DISTANCE_PID_I, LQR_DISTANCE_PID_D, 0, BALANCE_OUTPUT_LIMIT),
+      lqrSpeedPID(LQR_SPEED_PID_P, LQR_SPEED_PID_I, LQR_SPEED_PID_D, 0, BALANCE_OUTPUT_LIMIT),
+      lqrUPID(LQR_U_PID_P, LQR_U_PID_I, LQR_U_PID_D, 0, BALANCE_OUTPUT_LIMIT),
+      lqrZeroPID(LQR_ZERO_PID_P, LQR_ZERO_PID_I, LQR_ZERO_PID_D, 0, 10.0f) {
     servo1Pin = pin1;
     servo2Pin = pin2;
     servo3Pin = pin3;
@@ -127,6 +134,14 @@ WheelLeg::WheelLeg(int pin1, int pin2, int pin3, int pin4)
     // anglePID: 角度环PID（内环）- 输出电机扭矩，限制±BALANCE_OUTPUT_LIMIT
     // steeringPID: 转向环PID - 输出转向力矩，限制±10.0
     // offsetPID: 偏移修正PID（增量式）- 输出角度偏移增量，限制±2.0度
+    // 额外的 LQR 风格 PID 控制器用于在姿态环内部实现类似 3.Software 的 LQR+PID 组合
+
+    // LQR-PID 控制状态初始化
+    lqrAngleZeroPoint = 0.0f;       // 初始认为直立基准即零点，后续通过自适应慢慢修正
+    lqrDistanceZeroPoint = 0.0f;    // 位移零点（使用积分位移衡量）
+    lqrRobotSpeed = 0.0f;
+    lqrRobotSpeedLast = 0.0f;
+    lqrMoveStopFlag = false;
 }
 
 // 配置五连杆参数
@@ -1287,7 +1302,8 @@ void WheelLeg::updatePIDTransition() {
 
 
 // 计算平衡控制输出 - 包含转向控制和滚转控制
-void WheelLeg::calculateBalanceOutput(float currentAngleX, float currentAngleY, float currentYawRate, float motor1RPM, float motor2RPM, float& leftOutput, float& rightOutput) {
+// 在原有双环 PID 基础上，引入 LQR 增强项，以提高姿态与位移响应精度
+void WheelLeg::calculateBalanceOutput(float currentAngleX, float currentAngleY, float currentYawRate, float currentPitchRate, float motor1RPM, float motor2RPM, float& leftOutput, float& rightOutput) {
     if (!balanceEnabled) {
         leftOutput = 0.0f;
         rightOutput = 0.0f;
@@ -1332,8 +1348,8 @@ void WheelLeg::calculateBalanceOutput(float currentAngleX, float currentAngleY, 
     currentSpeed = -avgMotorSpeed;
     
     // 更新当前转向速度
-    currentYawRate = -currentYawRate;
-    this->currentYawRate = currentYawRate;
+    float yawRateDeg = -currentYawRate;
+    this->currentYawRate = yawRateDeg;
     
     // 自动偏移修正：当目标速度为0且未冻结时，根据当前速度自动调整基础角度偏移
     if (autoOffsetEnabled && !offsetFrozen && abs(targetSpeed) < 0.1f) {  // 目标速度接近0时启用
@@ -1362,9 +1378,9 @@ void WheelLeg::calculateBalanceOutput(float currentAngleX, float currentAngleY, 
     float speedError = targetSpeedFiltered - currentSpeed;
     float targetAngle = speedPID(speedError) + baseAngleOffset + baseAngleOffsetCorrection;
     
-    // 角度环：使用PID控制器计算平衡电机输出
+    // 角度环：作为反馈闭环，LQR 作为前馈力矩
     float angleError = targetAngle - currentAngleX;
-    float balanceOutput = anglePID(angleError);
+    float pidU = anglePID(angleError);   // PID 闭环修正力矩
     
     // 转向环：使用PID控制器计算转向力矩
     float steeringTorque = 0.0f;
@@ -1450,10 +1466,93 @@ void WheelLeg::calculateBalanceOutput(float currentAngleX, float currentAngleY, 
     }
     
     // 差速控制：平衡输出 + 转向力矩
+    // 在此基础上引入 LQR 风格的多 PID 组合（参考 3.Software 中的 lqr_balance_loop 实现）
+    // ===== LQR-PID 自平衡控制 =====
+    // 1) 状态获取：俯仰角 currentAngleX、俯仰角速度 currentPitchRate、电机线速度 vel、积分位移 lqrPosition
+    static float lqrPosition = 0.0f;                 // 机器人前后位移积分 (m)
+    static unsigned long lastPosUpdateMicros = 0;    // 上次位移积分时间
+
+    // 电机角速度 (rad/s) 与线速度 (m/s)
+    const float rpmToRadPerSec = 2.0f * PI / 60.0f;
+    float motor1Rad = motor1RPM * rpmToRadPerSec;
+    float motor2Rad = motor2RPM * rpmToRadPerSec;
+    float vel = -((motor1Rad * WHEEL_RADIUS_M) + (motor2Rad * WHEEL_RADIUS_M)) / 2.0f;  // 前进为正
+
+    // 位移积分，使用 micros() 提高时间精度
+    unsigned long nowMicros = micros();
+    if (lastPosUpdateMicros == 0) {
+        lastPosUpdateMicros = nowMicros;
+    }
+    float dtPos = (nowMicros - lastPosUpdateMicros) * 1e-6f;
+    lastPosUpdateMicros = nowMicros;
+    if (dtPos > 0.0f && dtPos < 1.0f) { // 简单异常 dt 过滤
+        lqrPosition += vel * dtPos;
+        lqrPosition = constrain(lqrPosition, -LQR_POSITION_LIMIT, LQR_POSITION_LIMIT);
+    }
+
+    // LQR 与 PID 使用同一“直立基准”：IMU角度 + baseAngleOffset + baseAngleOffsetCorrection
+    // 这里将 IMU 原始角度转换为相对直立基准的偏差角（单位：度）
+    float uprightDeg = baseAngleOffset + baseAngleOffsetCorrection;
+    float pitchForLQRDeg = currentAngleX - uprightDeg;  // 俯仰角相对直立基准偏差
+
+    // 状态量（尽量与 3.Software 中的命名对应）
+    float lqrAngle = pitchForLQRDeg;     // 俯仰角（deg）
+    float lqrGyro = currentPitchRate;    // 俯仰角速度（deg/s）
+    float lqrSpeed = vel;                // 线速度（m/s）
+    float lqrDistance = lqrPosition;     // 前后位移（m）
+
+    // 2) 计算自平衡输出的各个 PID 分量
+    float angleControl = lqrAnglePID(lqrAngle - lqrAngleZeroPoint);
+    float gyroControl  = lqrGyroPID(lqrGyro);
+
+    // 运动细节优化：当有明显速度指令时，仅依靠姿态+角速度控制，不锁定位移
+    if (fabs(targetSpeedFiltered) > 1.0f) { // 目标速度显著非零时，认为正在运动
+        lqrDistanceZeroPoint = lqrDistance; // 重置位移零点，避免长时间积分漂移
+        lqrUPID.reset();                    // 小扭矩补偿积分清零
+    }
+
+    // 原地停车：当目标速度回到 0 且实际速度接近 0 时，重置位移零点
+    if (fabs(targetSpeedFiltered) < 0.1f && fabs(lqrSpeed) < 0.05f) {
+        lqrDistanceZeroPoint = lqrDistance;
+    }
+
+    // 被外力快速推动时的原地停车处理：检测速度突变或速度过大
+    lqrRobotSpeedLast = lqrRobotSpeed;
+    lqrRobotSpeed = lqrSpeed;
+    bool wheelOffGround = (fabs(lqrRobotSpeed - lqrRobotSpeedLast) > 0.5f) || (fabs(lqrRobotSpeed) > 1.5f);
+
+    // 位移与速度控制分量（这里将目标速度设为 0，由外层速度环负责前后运动指令）
+    float distanceControl = lqrDistancePID(lqrDistance - lqrDistanceZeroPoint);
+    float speedControl    = lqrSpeedPID(lqrSpeed);
+
+    float lqrU = 0.0f;
+    if (wheelOffGround) {
+        // 轮部疑似离地，仅使用姿态+角速度分量，避免位移/速度控制带来剧烈输出
+        lqrDistanceZeroPoint = lqrDistance;
+        lqrU = angleControl + gyroControl;
+        lqrUPID.reset();
+    } else {
+        // 正常情况下，完整输出 LQR 风格控制量
+        lqrU = angleControl + gyroControl + distanceControl + speedControl;
+    }
+
+    // 3) 小扭矩非线性补偿 + 重心自适应（参考 3.Software 中 LQR_u 的后处理）
+    if (fabs(lqrU) < 5.0f && fabs(targetSpeedFiltered) < 0.1f && fabs(distanceControl) < 0.05f) {
+        // 小扭矩区域、无明显前后运动指令且位移误差较小 → 启用 PI 补偿与重心自适应
+        lqrU = lqrUPID(lqrU);                               // 补偿电机与机构的小扭矩非线性
+        lqrAngleZeroPoint -= lqrZeroPID(distanceControl);   // 缓慢调整俯仰角零点，做重心自适应
+    } else {
+        lqrUPID.reset();
+    }
+
+    // 4) 将 LQR-PID 控制量与原角度环 PID 输出混合
+    float combinedBalance = pidU + LQR_MIX_K * lqrU;
+    combinedBalance = constrain(combinedBalance, -balanceOutputLimit, balanceOutputLimit);
+
     // 左轮：平衡输出 - 转向力矩（负转向力矩使左轮减速，机器人左转）
     // 右轮：平衡输出 + 转向力矩（正转向力矩使右轮加速，机器人左转）
-    leftOutput = balanceOutput - steeringTorque;
-    rightOutput = balanceOutput + steeringTorque;
+    leftOutput = combinedBalance - steeringTorque;
+    rightOutput = combinedBalance + steeringTorque;
     
     // 调试输出（每2秒一次，包含响应时间监控）
     static unsigned long lastDebugTime = 0;
@@ -1469,8 +1568,12 @@ void WheelLeg::calculateBalanceOutput(float currentAngleX, float currentAngleY, 
                      motor1RPM, motor2RPM, avgMotorSpeed);
         Serial.printf("[平衡控制] 速度环: 目标=%.2f, 当前=%.2f, 误差=%.2f → 目标角度=%.2f°\n", 
                      targetSpeed, currentSpeed, speedError, targetAngle);
-        Serial.printf("[平衡控制] 角度环: 目标=%.2f°, 当前=%.2f°, 误差=%.2f° → 平衡输出=%.2f\n", 
-                     targetAngle, currentAngleX, angleError, balanceOutput);
+        Serial.printf("[平衡控制] 角度环: 目标=%.2f°, 当前=%.2f°, 误差=%.2f° → 角度PID输出=%.2f\n", 
+                     targetAngle, currentAngleX, angleError, pidU);
+        Serial.printf("[LQR-PID] pitchRel=%.2f°, gyro=%.2f°/s, pos=%.3fm(零点=%.3f), vel=%.3fm/s, "
+                      "angleCtrl=%.3f, gyroCtrl=%.3f, distCtrl=%.3f, speedCtrl=%.3f, u=%.3f, mix=%.2f → 合成平衡=%.2f\n",
+                     pitchForLQRDeg, lqrGyro, lqrDistance, lqrDistanceZeroPoint, lqrSpeed,
+                     angleControl, gyroControl, distanceControl, speedControl, lqrU, LQR_MIX_K, combinedBalance);
         Serial.printf("[转向控制] 转向环: 目标=%.2f°/s, 当前=%.2f°/s, 误差=%.2f°/s → 转向力矩=%.2f\n", 
                      targetYawRate, currentYawRate, targetYawRate - currentYawRate, steeringTorque);
         
@@ -1491,8 +1594,8 @@ void WheelLeg::calculateBalanceOutput(float currentAngleX, float currentAngleY, 
         Serial.printf("[偏移修正] 基础偏移=%.2f°, 修正值=%.3f°, 总偏移=%.2f° (自动修正:%s)\n", 
                      baseAngleOffset, baseAngleOffsetCorrection, baseAngleOffset + baseAngleOffsetCorrection, 
                      autoOffsetEnabled ? "启用" : "禁用");
-        Serial.printf("[输出] 左轮=%.2f, 右轮=%.2f (平衡=%.2f, 转向=%.2f)\n", 
-                     leftOutput, rightOutput, balanceOutput, steeringTorque);
+        Serial.printf("[输出] 左轮=%.2f, 右轮=%.2f (角度PID=%.2f, LQR-PID=%.2f, 转向=%.2f)\n", 
+                     leftOutput, rightOutput, pidU, lqrU, steeringTorque);
         Serial.printf("[PID状态] 速度[P=%.3f,I=%.3f,D=%.3f] 角度[P=%.3f,I=%.3f,D=%.3f] 转向[P=%.3f,I=%.3f,D=%.3f] 偏移[P=%.3f,I=%.3f,D=%.3f] 滚转[P=%.3f,I=%.3f,D=%.3f]\n", 
                      speedPID.P, speedPID.I, speedPID.D, anglePID.P, anglePID.I, anglePID.D, steeringPID.P, steeringPID.I, steeringPID.D, offsetPID.P, offsetPID.I, offsetPID.D, rollPID.P, rollPID.I, rollPID.D);
         lastDebugTime = currentTime;

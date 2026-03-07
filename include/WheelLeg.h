@@ -38,7 +38,7 @@ private:
     // 舵机当前角度存储 (相对角度)
     float servoAngles[4];
     
-    // 舵机零位角度
+    // 舵机
     int zeroPositions[4];
     
     // 舵机类型 (true: 270度, false: 180度)
@@ -122,11 +122,26 @@ private:
     void updatePIDTransition();
     
     // SimpleFOC PID控制器
-    PIDController speedPID;   // 速度环PID控制器（外环）
-    PIDController anglePID;   // 角度环PID控制器（内环）
-    PIDController steeringPID; // 转向PID控制器
-    PIDController offsetPID;  // 基础角度偏移修正PID控制器（增量式）
-    PIDController rollPID;    // 滚转角PID控制器（增量式）
+    PIDController speedPID;     // 速度环PID控制器（外环）
+    PIDController anglePID;     // 角度环PID控制器（内环）
+    PIDController steeringPID;  // 转向PID控制器
+    PIDController offsetPID;    // 基础角度偏移修正PID控制器（增量式）
+    PIDController rollPID;      // 滚转角PID控制器（增量式）
+
+    // LQR 风格多 PID 控制器（参考 3.Software 中的实现，将 LQR 增益拆分为若干 PID 分量）
+    PIDController lqrAnglePID;     // 俯仰角控制（对应 k1）
+    PIDController lqrGyroPID;      // 俯仰角速度控制（对应 k2）
+    PIDController lqrDistancePID;  // 前后位移控制（对应 k3）
+    PIDController lqrSpeedPID;     // 线速度控制（对应 k4）
+    PIDController lqrUPID;         // 小扭矩非线性补偿，对 LQR 总输出做 PI
+    PIDController lqrZeroPID;      // 重心自适应，缓慢调整直立基准角
+
+    // LQR-PID 控制相关状态
+    float lqrAngleZeroPoint;      // 俯仰角零点（相对直立基准的微调）
+    float lqrDistanceZeroPoint;   // 位移零点，用于原地停车/被推后复位
+    float lqrRobotSpeed;          // 上一次 LQR 计算中的线速度（轮部平均）
+    float lqrRobotSpeedLast;      // 前一周期的线速度，用于检测轮部离地
+    bool  lqrMoveStopFlag;        // 运动指令复零后的停车标志
     
     // 私有辅助函数：五连杆正运动学（左腿）
     // 输入：舵机1和舵机2的相对角度（度）
@@ -275,9 +290,9 @@ public:
     void setBaseAngleOffset(float offset);
     
     // 计算平衡控制输出 - 包含转向控制和滚转控制
-    // 输入：当前IMU的X角度（度），Y角度（度），Z轴角速度（度/秒），电机1 RPM，电机2 RPM
+    // 输入：当前IMU的X角度（度），Y角度（度），Z轴角速度（度/秒），Y轴角速度（度/秒），电机1 RPM，电机2 RPM
     // 输出：电机扭矩输出（左右轮差速）
-    void calculateBalanceOutput(float currentAngleX, float currentAngleY, float currentYawRate, float motor1RPM, float motor2RPM, float& leftOutput, float& rightOutput);
+    void calculateBalanceOutput(float currentAngleX, float currentAngleY, float currentYawRate, float currentPitchRate, float motor1RPM, float motor2RPM, float& leftOutput, float& rightOutput);
     
     // 获取平衡控制状态
     bool isBalanceEnabled() const { return balanceEnabled; }

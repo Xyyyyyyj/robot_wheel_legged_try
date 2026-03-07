@@ -428,9 +428,9 @@ void taskIMU(void *pvParameters) {
                         motor2Speed = lastMotor2Speed;
                     }
                     
-                    // 计算平衡控制输出 - 包含转向控制和滚转控制
+                    // 计算平衡控制输出 - 包含转向控制和滚转控制（在PID基础上叠加LQR增强）
                     float leftOutput, rightOutput;
-                    wheelLeg.calculateBalanceOutput(imuData.angleX, imuData.angleY, imuData.gyroZ, motor1Speed, motor2Speed, leftOutput, rightOutput);
+                    wheelLeg.calculateBalanceOutput(imuData.angleX, imuData.angleY, imuData.gyroZ, imuData.gyroY, motor1Speed, motor2Speed, leftOutput, rightOutput);
                     
                     // 将差速控制输出应用到电机
                     // 获取电机控制权限并设置扭矩 - 使用非阻塞方式

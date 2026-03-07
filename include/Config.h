@@ -3,11 +3,11 @@
  * 集中管理所有常量和配置参数
  */
 
- /*
- 腿高150 速度[P=0.31,I=0.000,D=0.005] 角度[P=1.2,I=0.000,D=0.005]
- 腿高100 速度[P=0.250,I=0.000,D=0.005] 角度[P=1.0,I=0.000,D=0.005]
- 腿高80 速度[P=0.20,I=0.000,D=0.005] 角度[P=0.7,I=0.000,D=0.005]
- */
+/*
+腿高150 速度[P=0.31,I=0.000,D=0.005] 角度[P=1.2,I=0.000,D=0.005]
+腿高100 速度[P=0.250,I=0.000,D=0.005] 角度[P=1.0,I=0.000,D=0.005]
+腿高80  速度[P=0.20,I=0.000,D=0.005] 角度[P=0.7,I=0.000,D=0.005]
+*/
 
 #ifndef CONFIG_H
 #define CONFIG_H
@@ -113,6 +113,37 @@
 #define ROLL_PID_I 0.0f
 #define ROLL_PID_D 0.001f
 
+// ==================== LQR 风格多 PID 控制参数（参考 3.Software 实现） ====================
+// 俯仰角 P 控制（对应 LQR 中的 k1）
+#define LQR_ANGLE_PID_P   1.0f
+#define LQR_ANGLE_PID_I   0.0f
+#define LQR_ANGLE_PID_D   0.0f
+
+// 俯仰角速度 P 控制（对应 LQR 中的 k2）
+#define LQR_GYRO_PID_P    0.06f
+#define LQR_GYRO_PID_I    0.0f
+#define LQR_GYRO_PID_D    0.0f
+
+// 前后位移 P 控制（对应 LQR 中的 k3）
+#define LQR_DISTANCE_PID_P 0.5f
+#define LQR_DISTANCE_PID_I 0.0f
+#define LQR_DISTANCE_PID_D 0.0f
+
+// 线速度 P 控制（对应 LQR 中的 k4）
+#define LQR_SPEED_PID_P   0.7f
+#define LQR_SPEED_PID_I   0.0f
+#define LQR_SPEED_PID_D   0.0f
+
+// 小扭矩非线性补偿（对 LQR 总输出做 PI）
+#define LQR_U_PID_P       1.0f
+#define LQR_U_PID_I       15.0f
+#define LQR_U_PID_D       0.0f
+
+// 重心自适应（缓慢调整直立基准角）
+#define LQR_ZERO_PID_P    0.002f
+#define LQR_ZERO_PID_I    0.0f
+#define LQR_ZERO_PID_D    0.0f
+
 // 滚转控制参数
 #define ROLL_ANGLE_OFFSET_LIMIT 70.0f  // 滚转偏移角限制 (度)
 #define ROLL_BASE_EXPECTED_ANGLE 180.0f  // 基础期望IMU_Y角度 (度)
@@ -122,6 +153,14 @@
 
 // 平衡控制输出限制
 #define BALANCE_OUTPUT_LIMIT 1000.0f
+
+// ==================== LQR 增强控制配置 ====================
+// 轮子半径 (单位: m) - 对齐 LQR_Practise 工程中的设置
+#define WHEEL_RADIUS_M 0.03f
+// LQR 位移积分上限 (单位: m)
+#define LQR_POSITION_LIMIT 0.10f
+// LQR 输出与原PID平衡输出的混合比例 (0~1，可根据实际调节)
+#define LQR_MIX_K 0.0f
 
 // ==================== 电机配置 ====================
 // AS5600编码器I2C地址
