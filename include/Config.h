@@ -136,7 +136,7 @@
 
 // 小扭矩非线性补偿（对 LQR 总输出做 PI）
 #define LQR_U_PID_P       1.0f
-#define LQR_U_PID_I       15.0f
+#define LQR_U_PID_I       0.0f
 #define LQR_U_PID_D       0.0f
 
 // 重心自适应（缓慢调整直立基准角）
@@ -160,7 +160,7 @@
 // LQR 位移积分上限 (单位: m)
 #define LQR_POSITION_LIMIT 0.10f
 // LQR 输出与原PID平衡输出的混合比例 (0~1，可根据实际调节)
-#define LQR_MIX_K 0.0f
+#define LQR_MIX_K 0.1f
 
 // ==================== 电机配置 ====================
 // AS5600编码器I2C地址
