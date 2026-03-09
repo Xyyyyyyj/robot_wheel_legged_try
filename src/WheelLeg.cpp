@@ -1385,7 +1385,7 @@ void WheelLeg::calculateBalanceOutput(float currentAngleX, float currentAngleY, 
     // 转向环：使用PID控制器计算转向力矩
     float steeringTorque = 0.0f;
     if (steeringEnabled) {
-        float yawError = targetYawRate - currentYawRate;
+        float yawError = targetYawRate + currentYawRate;
         steeringTorque = steeringPID(yawError);
     }
     
